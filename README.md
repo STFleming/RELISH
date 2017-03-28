@@ -8,7 +8,7 @@
   
 ----------------------------------------------
 
-##Runahead Execution of Load Instructions on Sliced Hardware (RELISH)
+#Runahead Execution of Load Instructions on Sliced Hardware (RELISH)
 
 A High-level synthesis optimisation pass, which automatically constructs helper circuits used to prefetch load instructions.
 
@@ -16,7 +16,7 @@ RELISH is an optional compiler flag for the FPGA high-level synthesis tool LegUp
 
 More information can be found in papers/fccm2017.pdf
 
-##Using the dockerfile
+#Using the dockerfile
 
 The easiest way to get started experimenting with RELISH is to use the provided Dockerfile.
 This file constructs a docker container,  downloading and installing LegUp-4.0, and patching in RELISH.
@@ -29,7 +29,7 @@ This might take a while to build.
 To launch an instance of the container image and open an interactive shell type:
 `docker run -ti relish_container /bin/bash`
 
-##Running example builds
+#Running example builds
 
 Example projects and makefiles are provided in the `examples/` directory.
 To construct one of the examples type `make all` in the appropriate directory.
