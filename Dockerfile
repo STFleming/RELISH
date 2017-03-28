@@ -59,7 +59,7 @@ RUN sed -i '/gui/d' /home/relish/legup-4.0/Makefile
 RUN wget http://legup.eecg.utoronto.ca/docs/4.0/_downloads/legup-4.0-to-319115.patch
 RUN cp legup-4.0-to-319115.patch /home/relish/legup-4.0/
 RUN (cd /home/relish/legup-4.0 && patch -p1 < legup-4.0-to-319115.patch)
-RUN cp ./xilinx_dirty_RAM_patch.patch /home/relish/legup-4.0/llvm/lib/Target/Verilog/
+RUN cp ./config/xilinx_dirty_RAM_patch.patch /home/relish/legup-4.0/llvm/lib/Target/Verilog/
 RUN (cd /home/relish/legup-4.0/llvm/lib/Target/Verilog && patch < xilinx_dirty_RAM_patch.patch)
 
 RUN (cd /home/relish/legup-4.0 && make)
