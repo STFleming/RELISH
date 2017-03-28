@@ -8,7 +8,7 @@
   
 ----------------------------------------------
 
-#Runahead Execution of Load Instructions on Sliced Hardware (RELISH)
+#Runahead Execution of Load Instructions via Sliced Hardware (RELISH)
 
 A High-level synthesis optimisation pass, which automatically constructs helper circuits used to prefetch load instructions.
 
