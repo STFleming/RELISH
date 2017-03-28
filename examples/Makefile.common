@@ -1,0 +1,139 @@
+include $(LEVEL)/Makefile.config
+CFLAG += -fno-builtin -m32 -I $(LEGUP_HOME)/lib/include -I ./includes -I /usr/include/i386-linux-gnu -O3 -fno-vectorize -fno-slp-vectorize
+LLVM_BIN = $(LLVM_DIR)/Release+Asserts/bin/
+LLVM_LIB = $(LLVM_DIR)/Release+Asserts/lib/
+FRONT_END = clang-3.5
+WRAPPER_DIR = $(LEVEL)/libs/WrapperGenerators
+CONTROL_WRAPPER_DIR = $(WRAPPER_DIR)/ControlRunahead/
+LEGUP_EXAMPLE_CONFIG=$(LEGUP_HOME)/examples/legup.tcl
+BOARD_TOPS_CMD = find $(LEGUP_HOME)/boards -maxdepth 3 -name "top.v"
+export BOARD_TOPS = $(shell $(BOARD_TOPS_CMD))
+OUTPUT_PATH=output
+OPT_FLAGS=-load=$(LLVM_LIB)LLVMLegUp.so -legup-config=$(LEGUP_HOME)/examples/legup.tcl -legup-config=config.tcl
+ARM_PREFIX=$(LEGUP_HOME)/swtools/binutils/bin/arm-altera-eabi-
+ARM_LD_SCRIPT=$(LEGUP_HOME)/swtools/arm/linkerscripts/altera-socfpga-unhosted-as.ld
+ARM_LIB=$(LEGUP_HOME)/swtools/arm/lib
+ACCEL_CMD := $(LLVM_BIN)opt $(OPT_FLAGS) -legup-config=parallelaccels.tcl -legup-tcl-cmds=\"puts [get_accelerator_function]\" /dev/null
+#ACCELS := $(shell $(ACCEL_CMD) 2> /dev/null)
+
+build.%.v: %.bc
+	$(LLVM_BIN)llvm-dis $<
+	$(LLVM_BIN)llvm-link  $< -o prelto.linked.$<
+	$(LLVM_BIN)opt -load=LLVMLegUp.so -legup-config=$(LEGUP_HOME)/examples/legup.tcl  -std-link-opts < prelto.linked.$< -o 1.prelto.linked.$<
+	$(LLVM_BIN)opt -load=LLVMLegUp.so -legup-config=$(LEGUP_HOME)/examples/legup.tcl  -legup-prelto < 1.prelto.linked.$< > 6.prelto.$<
+	$(LLVM_BIN)opt -load=LLVMLegUp.so -legup-config=$(LEGUP_HOME)/examples/legup.tcl  -std-link-opts < 6.prelto.$< -o preSlice.prelto.$<
+	mkdir -p output
+	cp -r $(LEGUP_HOME)/boards/CycloneV/SoCKit/ARM_Simple_Hybrid_System/* output/
+	cp $(LEGUP_HOME)/boards/legup_components.ipx output/
+	$(LLVM_BIN)opt -load=$(LLVM_LIB)LLVMSliceUp.so -SliceUp < preSlice.prelto.$< > prelto.$< 	
+	export LEGUP_HYBRID_FLOW=1;\
+	$(LLVM_BIN)opt -load=LLVMLegUp.so -legup-config=$(LEGUP_HOME)/examples/legup.tcl -legup-config=config.tcl -legup-hw-only < prelto.$< > hw.prelto.$<
+	$(LLVM_BIN)llvm-dis hw.prelto.$<
+	export LEGUP_HYBRID_FLOW=1;\
+	export LEGUP_ACCELERATOR_FILENAME=$*;\
+	$(LLVM_BIN)opt -load=LLVMLegUp.so -legup-config=$(LEGUP_HOME)/examples/legup.tcl -legup-config=config.tcl -loops -loop-simplify -legup-sw-only < prelto.$< > sw.prelto.$<
+	$(LLVM_BIN)llvm-dis sw.prelto.$<
+	cp sw.prelto.$< $*.prelto.sw.bc
+	cp hw.prelto.$< $*.prelto.hw.bc
+	#SW Lowering Linking
+	$(LLVM_BIN)opt $(OPT_FLAGS) -legup-prelto $*.prelto.sw.bc -o $*.sw.lowered.bc	
+	$(LLVM_BIN)llvm-link $*.sw.lowered.bc $(LEGUP_HOME)/examples/lib/llvm/liblegup.bc $(LEGUP_HOME)/examples/lib/llvm/liblegupParallel.bc -o $*.sw.1.bc
+	$(LLVM_BIN)llvm-dis $*.sw.1.bc
+	$(LLVM_BIN)opt -std-link-opts $*.sw.1.bc -o $*.sw.bc
+	$(LLVM_BIN)llvm-dis $*.sw.bc
+	#Compiling to ARM Code
+	ln -sf $*.sw.bc $*.sw.ARMA9.bc
+	$(LLVM_BIN)llc $*.sw.ARMA9.bc -march=arm -relocation-model=static -mcpu=cortex-a9-mp -fast-isel -o $*.ARMA9.s
+	$(LLVM_BIN)llvm-mc $*.ARMA9.s -triple=armv7-none-gnueabi -mcpu=cortex-a9-mp -filetype=obj -o $*.ARMA9.o
+	$(ARM_PREFIX)ld -g -T $(ARM_LD_SCRIPT) $*.ARMA9.o -o $*.ARMA9.elf --defsym __vma_offset=0x40000000 --defsym __cs3_reset_generic=0x0 --defsym arm_available_mem_size=0xbf800000 --defsym __cs3_interrupt_vector_arm=0xffff0000 -EL -L $(ARM_LIB) -lmem -lprof -luart -L $(ARM_LIB)/cortex-a9 -lgcc -lmem
+	$(ARM_PREFIX)objdump -D $*.ARMA9.elf > $*.ARMA9.src
+	cp $*.ARMA9.src $*.src
+	$(ARM_PREFIX)objcopy $*.ARMA9.elf -O srec $*.ARMA9.srec
+	cp $*.ARMA9.srec output/
+	#hybrid HW Lowering Linking
+	$(LLVM_BIN)opt $(OPT_FLAGS) -legup-prelto < $*.prelto.hw.bc > $*.hw.lowered.bc
+	$(LLVM_BIN)llvm-dis $*.hw.lowered.bc
+	$(LLVM_BIN)llvm-link $*.hw.lowered.bc $(LEGUP_HOME)/examples/lib/llvm/libm.bc $(LEGUP_HOME)/examples/lib/llvm/liblegup.bc -o $*.hw1.bc
+	$(LLVM_BIN)llvm-dis $*.hw1.bc
+	$(LLVM_BIN)llvm-link $*.hw1.bc $(LEGUP_HOME)/examples/lib/llvm/liblegupParallel.bc -o $*.hw12.bc
+	$(LLVM_BIN)llvm-dis $*.hw12.bc
+	$(LLVM_BIN)opt -internalize-public-api-list=$(ACCELS) -internalize -globaldce $*.hw12.bc -o $*.hw2.bc
+	$(LLVM_BIN)llvm-dis $*.hw2.bc
+	$(LLVM_BIN)opt $(OPT_FLAGS) -basicaa -loop-simplify -indvars2 -loop-pipeline < $*.hw2.bc > $*.hw3.bc
+	$(LLVM_BIN)llvm-dis $*.hw3.bc
+	$(LLVM_BIN)opt $(OPT_FLAGS) -legup-prelto < $*.hw3.bc > $*.hw.bc
+	$(LLVM_BIN)llvm-dis $*.hw.bc
+	$(LLVM_BIN)opt -internalize-public-api-list=$(ACCELS) -internalize -instcombine -globaldce -adce $*.hw.bc -o $*.hw.11.bc
+	$(LLVM_BIN)llvm-dis $*.hw.11.bc
+	export LEGUP_HYBRID_FLOW=1;\
+	export LEGUP_ACCELERATOR_FILENAME=$*;\
+	$(LLVM_BIN)llc -legup-config=config.tcl -legup-config=parallelaccels.tcl -legup-config=$(LEGUP_HOME)/examples/legup.tcl -legup-config=config.tcl -march=v $*.hw.bc -o $*.v 
+	#Add HW to output
+	mkdir -p output/ip
+	cp $*.v output/ip/
+	mv *_hw.tcl output/ip
+	cp -r ../../libs/AXIWrapper/ ./
+	cp $*.v ./AXIWrapper/
+	cd AXIWrapper && python insertAXISignals.py --input $*.v --output m_$*.v --functionName $*
+	mkdir AXIWrapper/AXI_Interface_IP/hdl
+	mv AXIWrapper/m_$*.v AXIWrapper/AXI_Interface_IP/hdl
+	touch UNUSED.mif
+	cp *.mif AXIWrapper/AXI_Interface_IP/hdl
+	#touch AXIWrapper/AXI_Interface_IP/hdl/UNUSED.mif 
+	cp $(LEGUP_HOME)/ip/libs/generic/*.v AXIWrapper/AXI_Interface_IP/hdl/
+	mv AXIWrapper/interfaces/with_pslice.v AXIWrapper/AXI_Interface_IP/hdl/axi_reader.v
+	#mv AXIWrapper/interfaces/no_pslice.v AXIWrapper/AXI_Interface_IP/hdl/axi_reader.v
+	cd AXIWrapper && ./createPackageScript
+	sed -ie 's/\.numwords_a = 1/\.numwords_a = 2/g' AXIWrapper/AXI_Interface_IP/hdl/m_$*.v
+	sed -ie 's/\.numwords_b = 1/\.numwords_b = 2/g' AXIWrapper/AXI_Interface_IP/hdl/m_$*.v
+
+generate:
+	cd output/ && qsys-script --script=legup_qsys.tcl || [ $$? -eq 4 ]
+	#Generate the system
+	cd output/ && time qsys-generate ./legup_system.qsys --synthesis=VERILOG
+	$(LEGUP_HOME)/examples/set_axi_signals.sh output/legup_system/synthesis/legup_system.v
+	
+compile:
+	cd output && time quartus_map top
+	cd output && time quartus_fit top
+	cd output && time quartus_asm top
+
+%.l.bc: %.bc
+	$(LLVM_BIN)llvm-dis $<
+	$(LLVM_BIN)llvm-link  $< -o prelto.linked.$<
+	$(LLVM_BIN)opt -load=LLVMLegUp.so -legup-config=$(LEGUP_HOME)/examples/legup.tcl  -std-link-opts < prelto.linked.$< -o 1.prelto.linked.$<
+	$(LLVM_BIN)opt -load=LLVMLegUp.so -legup-config=$(LEGUP_HOME)/examples/legup.tcl  -legup-prelto < 1.prelto.linked.$< > 6.prelto.$<
+	$(LLVM_BIN)opt -load=LLVMLegUp.so -legup-config=$(LEGUP_HOME)/examples/legup.tcl  -std-link-opts < 6.prelto.$< -o prelto.$<
+	$(LLVM_BIN)llvm-link  prelto.$< $(LEGUP_HOME)/examples/lib/llvm/liblegup.bc $(LEGUP_HOME)/examples/lib/llvm/libm.bc -o 6.postlto.$<
+	$(LLVM_BIN)opt -internalize-public-api-list=main -internalize -globaldce 6.postlto.$< -o 8.postlto.$<
+	$(LLVM_BIN)opt -load=LLVMLegUp.so -legup-config=$(LEGUP_HOME)/examples/legup.tcl  -instcombine -std-link-opts < 8.postlto.$< -o postlto.$<
+	$(LLVM_BIN)opt -load=LLVMLegUp.so -legup-config=$(LEGUP_HOME)/examples/legup.tcl  -basicaa -loop-simplify -indvars2  -loop-pipeline postlto.$< -o 1.$<
+	$(LLVM_BIN)opt -load=LLVMLegUp.so -legup-config=$(LEGUP_HOME)/examples/legup.tcl  -instcombine 1.$< -o $@ 
+
+%.analysis.bc: %.bc
+	$(LLVM_BIN)opt -load=$(LLVM_LIB)LLVMSliceUp.so -SliceUp < $< > $@
+
+%.bc: %.c
+	$(FRONT_END) $< -emit-llvm -c $(CFLAG) -o $@
+
+%.ll: %.bc
+	$(LLVM_BIN)llvm-dis $<
+
+%.bc: %.ll
+	$(LLVM_BIN)llvm-as $< -o $@
+
+%.v: %.bc
+	$(LLVM_BIN)llc -legup-config=$(LEGUP_EXAMPLE_CONFIG) -legup-config=config.tcl -march=v $< -o $@
+
+%.tb.v: %.analysis.v %.v 
+	python $(CONTROL_WRAPPER_DIR)renameCFSliceTop.py --CFSlice $*.analysis.v 
+	python $(CONTROL_WRAPPER_DIR)generateTB.py --original $*.v --CFSlice $*.analysis.v --tb $*.tb.v --simscript runVsim 
+	chmod u+x runVsim
+	chmod u+x runVsim_worklib
+
+%.graph: %.tb.v %.analysis.v 
+	python $(WRAPPER_DIR)/MemoryRunahead/limitRunahead.py --input $*.analysis.v --functionName ListAverage --runahead 1 
+	./runVsim_worklib
+	./runVsim > sim.log
+	tail sim.log 
+	python $(WRAPPER_DIR)/../Graphing/graphSimLog.py --input sim.log --start 0 --end 0

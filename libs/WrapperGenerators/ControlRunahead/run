@@ -1,0 +1,5 @@
+#! /bin/bash
+cp dfadd.l.analysis.original.v tmp_o.v
+cp dfadd.l.analysis.original.v tmp_c.v
+python renameCFSliceTop.py --CFSlice tmp_c.v
+python generateTB.py --original tmp_o.v --CFSlice tmp_c.v --tb tmp_tb.v --simscript tmp_sim

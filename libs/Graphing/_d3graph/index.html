@@ -1,0 +1,138 @@
+
+<!DOCTYPE html>
+<head>
+<meta charset="utf-8">
+<title>CS 360 Data Visualization</title>
+
+<!-- JavaScript Libraries //-->
+<script src="https://d3js.org/d3.v3.min.js"></script>
+
+<!-- CSS Style //-->
+<link href="http://fonts.googleapis.com/css?family=Source+Sans+Pro:300,900|Source+Code+Pro:300" rel="stylesheet" type="text/css">
+<link href="style.css" rel="stylesheet" type="text/css">
+
+<script>
+/* GLOBALS */
+
+var width  = 800;           // width of svg image
+var height = 800;           // height of svg image
+var margin = 10;            // amount of margin around plot area
+var linkWidth = 1;
+var linkWidthHighlight = 4;
+var pad = margin / 2;       // actual padding amount
+var radius = 4;             // fixed node radius
+var radiusHighlight = 5;             // fixed node radius
+var yfixed = pad + radius + 50;  // y position for all orig nodes
+var xfixed = pad + radius + 50;  // x position for all slice nodes
+var offset = xfixed;
+var sF = 0.8;
+
+
+// Draws nodes on plot
+function drawNodes(nodes) {
+    // used to assign nodes color by group
+    var color = d3.scale.category10();
+
+    d3.select("#plot").selectAll(".node")
+        .data(nodes)
+        .enter()
+        .append("circle")
+        .attr("class", "node")
+        .attr("id", function(d, i) { return d.name; })
+        .attr("addr", function(d) { return d.addr; })
+        .attr("time", function(d, i) { return d.time; })
+        .attr("cx", function(d, i) { return d.x; })
+        .attr("cy", function(d, i) { return d.y; })
+        .attr("r",  function(d, i) { return radius; })
+        .attr("group", function(d, i) { return d.group; })
+        .style("fill",   function(d, i) { return color(d.group); })
+        .on("mouseover", function(d, i) { if(d.group == 1) {
+                                          d3.select(this).attr("r", radiusHighlight);
+                                          }
+                                        })
+        .on("mouseout",  function(d, i) {
+                                          if(d.group == 1) {
+                                          d3.select(this).attr("r", radius);
+                                        }});
+}
+
+// Layout nodes linearly, sorted by group
+function linearLayout(nodes, startTime, endTime) {
+    // used to scale node index to x position
+    var xscale = d3.scale.linear()
+        .domain([startTime, endTime])
+        .range([radius, width - margin - radius]);
+
+    var yscale = d3.scale.linear()
+        .domain([startTime, endTime])
+        .range([radius, width - margin - radius]);
+
+    // calculate pixel location for each node
+    nodes.forEach(function(d) {
+            if (d.group == 1){
+                d.x = sF*(offset + xscale(d.time));
+                d.y = sF*(yfixed);
+                }
+             else {
+                d.y = sF*(offset + yscale(d.time));
+                d.x = sF*(xfixed);
+             }
+    });
+}
+
+//Draws the link between the load operations
+function drawLinks(links, startTime, endTime) {
+
+        var color = d3.scale.linear()
+                    .domain([0.4,0.23])
+                    .range(["blue", "red"]);
+
+    var xscale = d3.scale.linear()
+        .domain([startTime, endTime])
+        .range([radius, width - margin - radius]);
+
+        //add links
+        d3.select("#plot").selectAll(".link")
+                .data(links)
+                .enter()
+                .append("line")
+                .style("stroke",function(d){ console.log((xscale(d.source) + offset)/(xscale(d.target) + offset)); return color((xscale(d.source) + offset)/(xscale(d.target) + offset));})
+                .style("stroke-width", function() { return linkWidth;})
+                .attr("class", "link")
+                .attr("starttime",function(d){return d.source; })
+                .attr("endtime",function(d){return d.target;})
+                .attr("y1",function(d){return sF*(xscale(d.source) + offset);})
+                .attr("x1",function(d){return sF*xfixed;})
+                .attr("x2",function(d){return sF*(xscale(d.target) + offset);})
+                .attr("y2",function(d){return sF*yfixed;});
+}
+
+// Draws an arc diagram for the provided undirected graph
+function runaheadDiagram(graph) {
+    // create svg image
+    var svg  = d3.select("body")
+        .append("svg")
+        .attr("id", "arc")
+        .attr("width", width)
+        .attr("height", height);
+
+    // create plot area within svg image
+    var plot = svg.append("g")
+        .attr("id", "plot")
+        .attr("transform", "translate(" + pad + ", " + pad + ")");
+
+    linearLayout(graph.nodes, graph.startTime, graph.endTime);
+    drawLinks(graph.links, graph.startTime, graph.endTime);
+    drawNodes(graph.nodes);
+}
+
+</script>
+</head>
+
+<body>
+<script>
+d3.json("data.json", runaheadDiagram);
+</script>
+</body>
+</html>
+

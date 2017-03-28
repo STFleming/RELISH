@@ -1,0 +1,67 @@
+--- VerilogWriter.cpp   2017-03-27 14:13:14.881736567 +0000
++++ VerilogWriter_new.cpp       2017-03-27 14:15:23.391558881 +0000
+@@ -2325,36 +2325,36 @@
+             << "end\n";
+     } else {
+         Out << "always @ (posedge clk)\n"
+-            << "if (clken)\n"
+-            << "begin // Port A\n"
+-            << "if (wren_a)\n"
+             << "begin\n"
+-            << "    ram[address_a] <= data_a;\n"
+-            << "    q_a_wire <= {width_a{1'bX}};\n" <<
+-            // The below line doesn't synthesize on Cyclone II if widthad_a <= 3
+-            //"    q_a_wire <= data_a;\n" <<
+-            "end\n"
+-            << "else\n"
+-            << "    q_a_wire <= ram[address_a];\n";
+-        if (LEGUP_CONFIG->getParameter("INFERRED_RAM_FORMAT") != "xilinx") {
+-            // Xilinx expects inferred dual port ram to be in a single always
+-            // block
+-            // Altera: separate always blocks
+-            Out << "end\n"
+-                << "always @ (posedge clk)\n"
+-                << "if (clken)\n"
+-                << "begin // Port b\n";
+-        }
+-        Out << "if (wren_b)\n"
++            << "        if (clken)\n"
++            << "        begin // Port A\n"
++            << "                if (wren_a)\n"
++            << "                begin\n"
++            << "                        ram[address_a] <= data_a;\n"
++            << "                        q_a_wire <= {width_a{1'bX}};\n"
++            <<"                 end\n"
++            << "                else\n"
++            << "                begin\n"
++            << "                            q_a_wire <= ram[address_a];\n"
++            << "                end\n"
++            << "        end\n"
++            << "end\n\n";
++
++        Out << "always @ (posedge clk)\n"
+             << "begin\n"
+-            << "    ram[address_b] <= data_b;\n"
+-            << "    q_b_wire <= {width_b{1'bX}};\n" <<
+-            // The below line doesn't synthesize on Cyclone II if widthad_a <= 3
+-            //"    q_b_wire <= data_b;\n" <<
+-            "end\n"
+-            << "else\n"
+-            << "    q_b_wire <= ram[address_b];\n"
+-            << "end\n";
++            << "        if (clken)\n"
++            << "        begin // Port B\n"
++            << "                if (wren_b)\n"
++            << "                begin\n"
++            << "                        ram[address_b] <= data_b;\n"
++            << "                        q_b_wire <= {width_b{1'bX}};\n"
++            <<"                 end\n"
++            << "                else\n"
++            << "                begin\n"
++            << "                            q_b_wire <= ram[address_b];\n"
++            << "                end\n"
++            << "        end\n"
++            << "end\n\n";
+     }
+
+     Out << "\n" << getMemoryOutputRegisters() << "\n"

@@ -1,0 +1,6 @@
+make listAverage.l.bc
+make listAverage.l.analysis.bc
+make listAverage.l.v
+make listAverage.l.analysis.v
+#make listAverage.l.tb.v
+#make listAverage.l.graph
